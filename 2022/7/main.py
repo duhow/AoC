@@ -1,9 +1,12 @@
 import re
 import logging
 
-DEBUG = 1
+DEBUG = 0
 DEBUG_LOAD = 0
 logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO, format='%(message)s')
+
+DISKMAX_SIZE = 70000000
+UPDATE_SIZE = 30000000
 
 class File:
     def __init__(self, name: str, size: int = 0, parent=None):
@@ -88,16 +91,6 @@ class Directory(File):
 
     def __repr__(self):
         return f"{self.name} (dir)"
-        #if not self.files:
-        #        return ''
-        #    cwd = []
-        #    for file in self.files:
-        #        if isinstance(file, File):
-        #            cwd.append(repr(file))
-        #        else:
-        #            cwd.append({repr(file): str(file)})
-        #    data = cwd
-        #    return yaml.dump(data)
 
 def shell(text, system, return_to_root=False):
     fileCreation = False
@@ -176,40 +169,22 @@ $ ls
 7214296 k
 """
 test_root = shell(test_commands, test_root, return_to_root=True)
-#test_root = test_root.cd("/")
 
 assert test_root.cd("a").cd("e").size == 584
 assert test_root.cd("a").size == 94853
 assert test_root.cd("d").size == 24933642
 assert test_root.cd("/").size == 48381165
 
-#root = Directory("/")
-#root.add(Directory("a")) \
-#    .add(File("b.txt", 14848514)) \
-#    .add(File("c.dat", 8504156)) \
-#    .add(Directory("d"))
-#
-#root.cd("a") \
-#    .add(Directory("e")) \
-#    .add(File("f", 29116)) \
-#    .add(File("g", 2557)) \
-#    .add(File("h.lst", 62596))
-#print(root.size)
-
 root = Directory("/")
 with open('input', 'r') as output:
     commands = output.readlines()
     root = shell(''.join(commands), root, return_to_root=True)
 
-print("# -------")
-print(root.ls)
-print("# -------")
-
 def recursive_size(folder, lim = 100000):
     TOTAL_SIZE = 0
     logging.debug(f">> {folder.pwd}")
     for file in folder.files:
-        print(repr(file))
+        logging.debug(repr(file))
     if folder.has_subdirs:
         for file in folder.files:
             if file.is_dir:
@@ -217,13 +192,21 @@ def recursive_size(folder, lim = 100000):
     if folder.pwd != "/" and folder.size <= lim:
         TOTAL_SIZE += folder.size
     return TOTAL_SIZE
-#    for file in folder.files:
-#        logging.debug(f"># {repr(file)}")
-#        if file.is_dir and file.has_subdirs:
-#            return recursive_size(file)
-#        if file.is_dir and file.size > lim:
-#            logging.debug(f"Size of {file.pwd}")
-#            TOTAL_SIZE += file.size
-#    return TOTAL_SIZE
+
+def cleanup(folder, target: int):
+    folders = list()
+    if folder.has_subdirs:
+        for file in folder.files:
+            if file.is_dir:
+                folders = folders + cleanup(file, target)
+    if folder.size >= target:
+        folders.append(folder)
+    if folder.pwd != "/":
+        return folders
+    return sorted(folders, key=lambda x: x.size, reverse=False)[0]
+
 
 print(recursive_size(root))
+
+TARGET_SIZE = UPDATE_SIZE - (DISKMAX_SIZE - root.cd("/").size)
+print(cleanup(root, TARGET_SIZE).size)
