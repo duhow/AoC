@@ -2,6 +2,7 @@ import re
 import logging
 
 DEBUG = 1
+DEBUG_LOAD = 0
 logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO, format='%(message)s')
 
 class File:
@@ -36,6 +37,14 @@ class Directory(File):
         self.name = name
         self.parent = parent
         self.files = list()
+
+    def __getitem__(self, obj: [str, File]) -> File:
+        if isinstance(obj, File):
+            obj = obj.name
+        for file in self.files:
+            if file.name == obj:
+                return file
+        return None
 
     def add(self, file: File):
         file.parent = self
@@ -90,7 +99,7 @@ class Directory(File):
         #    data = cwd
         #    return yaml.dump(data)
 
-def shell(text, system):
+def shell(text, system, return_to_root=False):
     fileCreation = False
 
     for output in text.split('\n'):
@@ -98,20 +107,23 @@ def shell(text, system):
         if not output:
             continue
 
-        logging.debug(output)
+        if DEBUG_LOAD:
+            logging.debug(output)
 
         if output.startswith('$ '):
             #logging.debug(f"# ls out")
             fileCreation = False
             command = re.search('cd (?P<path>.+)', output)
             if command:
-                logging.debug(f"# chdir {command.group('path')}")
+                if DEBUG_LOAD:
+                    logging.debug(f"# chdir {command.group('path')}")
                 system = system.cd(command.group('path'))
                 continue
 
             command = re.search('ls', output)
             if command:
-                logging.debug(f"# prepare to ls")
+                if DEBUG_LOAD:
+                    logging.debug(f"# prepare to ls")
                 fileCreation = True
                 continue
 
@@ -121,17 +133,55 @@ def shell(text, system):
                 name = str(obj.group('name'))
                 size = int(obj.group('size'))
                 file = File(name, size)
-                logging.debug(f"# Create {file}")
+                if DEBUG_LOAD:
+                    logging.debug(f"# Create {file}")
                 system = system.add(file)
 
             obj = re.match('dir (?P<name>[\w.]+)', output)
             if obj:
                 name = str(obj.group('name'))
                 file = Directory(name)
-                logging.debug(f"# Create dir {file}")
+                if DEBUG_LOAD:
+                    logging.debug(f"# Create dir {file}")
                 system = system.add(file)
 
+    if return_to_root:
+        system = system.cd("/")
     return system
+
+test_root = Directory("/")
+test_commands = """
+$ cd /
+$ ls
+dir a
+14848514 b.txt
+8504156 c.dat
+dir d
+$ cd a
+$ ls
+dir e
+29116 f
+2557 g
+62596 h.lst
+$ cd e
+$ ls
+584 i
+$ cd ..
+$ cd ..
+$ cd d
+$ ls
+4060174 j
+8033020 d.log
+5626152 d.ext
+7214296 k
+"""
+test_root = shell(test_commands, test_root, return_to_root=True)
+#test_root = test_root.cd("/")
+
+assert test_root.cd("a").cd("e").size == 584
+assert test_root.cd("a").size == 94853
+assert test_root.cd("d").size == 24933642
+assert test_root.cd("/").size == 48381165
 
 #root = Directory("/")
 #root.add(Directory("a")) \
@@ -149,10 +199,9 @@ def shell(text, system):
 root = Directory("/")
 with open('input', 'r') as output:
     commands = output.readlines()
-    root = shell(''.join(commands), root)
+    root = shell(''.join(commands), root, return_to_root=True)
 
 print("# -------")
-root = root.cd("/")
 print(root.ls)
 print("# -------")
 
@@ -164,8 +213,8 @@ def recursive_size(folder, lim = 100000):
     if folder.has_subdirs:
         for file in folder.files:
             if file.is_dir:
-                return recursive_size(file, lim)
-    if folder.pwd != "/":
+                TOTAL_SIZE += recursive_size(file, lim)
+    if folder.pwd != "/" and folder.size <= lim:
         TOTAL_SIZE += folder.size
     return TOTAL_SIZE
 #    for file in folder.files:
